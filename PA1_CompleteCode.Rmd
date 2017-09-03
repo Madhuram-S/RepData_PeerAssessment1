@@ -1,0 +1,246 @@
+---
+title: "Reproducible Research: Peer Assessment 1"
+output: html_document
+html_document: PA1_output.html
+keep_md: true
+Author: "Madhuram"
+Date: "September 2, 2017"
+---
+```{r setGlblOpts, echo=FALSE}
+      knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, 
+                            fig.path = "figure/", fig.height = 3, fig.width = 5)
+```
+
+This assignment analyses personal activity monitoring data by each and interval. The data is obtained from datast "[Activity Monitoring data.csv](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip)" that contain number of steps taken for every five minute interval for each day. 
+
+
+The aim of the analysis is determine  
+* What is mean and total number of steps taken per day  
+* Determine the average daily Pattern  
+* Compare the activity patterns between weekday and weekends   
+
+
+## Loading and preprocessing the data
+
+In this step, we load the csv file provided is loaded using read.csv().  In this case it is "[Activity Monitoring data.csv](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip)"
+
+Once loaded, the data is preprocessed to remove the NA values from the dataset
+
+```{r load_process_data}
+# install dplyr package if not already installed
+  if("dplyr" %in% rownames(installed.packages()) == FALSE) {install.packages("dplyr")}
+  if("ggplot2" %in% rownames(installed.packages()) == FALSE) {install.packages("ggplot2")}
+
+## load dplyr & ggplot2 package
+  suppressPackageStartupMessages(library(data.table))
+  suppressPackageStartupMessages(library(dplyr))
+  suppressPackageStartupMessages(library(plyr))
+  suppressPackageStartupMessages(library(ggplot2))
+
+
+  act_raw <- data.table(read.csv("data/activity.csv", stringsAsFactors = FALSE,
+                       colClasses = c("numeric","POSIXct","integer")))
+
+# convert it to tibble for easy application dplyr functions
+  act_raw <- tbl_df(act_raw) 
+
+# pre-process the raw dataset to remove NA & create two dataset one for date and another for interval
+  activity_bydt <- act_raw %>% select(steps,date) %>% na.omit() %>% group_by(date)
+  activity_byint <- act_raw %>% select(steps,interval) %>% na.omit() %>% group_by(interval)
+
+```
+
+A small verification is done by displaying summary of the data set loaded
+```{r viewSummary}
+    summary(act_raw)
+```
+## What is mean and total number of steps taken per day?
+This is the first exploratory step to understand activity pattern on daily basis. For this we omt the missing values.  
+
+Here we calculate and report  
+* Total number of steps taken each day.  
+* A histogram of total number of steps each day.    
+* Mean and Median of the daily acitity.  
+
+```{r dailyPattern}
+      # 1. Calculate total steps in a day and NA values are omitted
+      # store the summary values in summary dataset
+
+      daywise_rpt_bf <- activity_bydt %>% summarise_each(funs(total_stps = sum))
+      
+      # plot histogram for total_steps_byday
+      
+      ggplot(daywise_rpt_bf, aes(daywise_rpt_bf$total_stps)) + geom_histogram() +
+          xlab("Total Steps taken each day") + ylab("Count") +
+              ggtitle("Total steps taken each day before NA values are imputed") 
+      
+```
+
+We also calculate the mean and median for steps taken for each day
+``` {r calcMeanMedian}
+      # Calculate mean and median for each day and store in summary dataset
+      daywise_rpt_bf <- join(daywise_rpt_bf, 
+                             activity_bydt %>% summarise_each(funs(mean_stps = mean)), 
+                                by = c("date"))
+      daywise_rpt_bf <- join(daywise_rpt_bf, 
+                             activity_bydt %>% summarise_each(funs(median_stps = median)), 
+                                by = c("date"))
+      
+      
+```
+
+The mean and median values for each day is as below  
+```{r}
+    daywise_rpt_bf 
+```
+## What is the average daily activity pattern?
+To understand the daily activity pattern, we calculate the average of number of steps taken across all days for each of the 5-minute interval values
+
+```{r findAvgStpsByInterval}
+    
+    # WE use the activity_byint dataset created during preprocessing step to calculate meadn
+    avgsteps_byint <- activity_byint %>% summarise_each(funs(mean))
+```
+
+Once the average steps are calculated across all days by interval, we see the relationship with a time series plot between interval and aaverage steps taken
+
+```{r timeseriesPlot}
+  
+  # time series plot for average steps taken  by interval
+    ggplot(avgsteps_byint, aes(x = interval, y = steps)) + geom_line(col = "blue")+
+          xlab("Interval") + ylab( "Average steps taken") +
+            ggtitle("Daily Actvity Pattern (NA values are omitted) ")
+
+  # find the 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps
+  int_maxavg <- head(avgsteps_byint %>% arrange(desc(steps)),1)$interval
+
+```
+
+The above line plot shows the variation average steps taken across intervals. We can see that the **interval `r int_maxavg`** contains the maximum number of steps
+
+
+## Imputing missing values
+However one of the issues is that the raw datafile contains a number of missing values which have an impact on the analysis
+
+```{r NAVals}
+    totalNAs <- sum(is.na(act_raw$steps)) # calculate total NA values in dataset
+  
+```
+With the above code, we see that we have **`r totalNAs`** in the raw dataset provided.
+
+Now, it is required that we identify a way to fill / impute the missing values some relevant data so we can understand the activity pattern better
+
+**Adopted data imputing strategy**: Here I have used mean for that 5-minute time interval as the data to be used when a NA is found
+
+For instance, consider NA value for date 2012-10-01 and Interval 5. We have already calculate the mean for interval 5 as part of the daily activity pattern by interval step. We can use the mean for interval 5 for the above instance
+
+```{r imputeMissingVals}
+      # the mean for that 5-min interval is used to populate the missing NA values
+
+      # convert avg steps per interval to a dataframe to enable usage of rownames
+      mn_int <- as.data.frame(avgsteps_byint)
+      row.names(mn_int) <- avgsteps_byint$interval
+      
+      # Find the relevant 5-min interval mean and populate in the NA value
+      act_NAfilled <- act_raw %>% 
+                          mutate_at(c("steps"),
+                            funs(ifelse(is.na(.),
+                              round(mn_int[c(paste("",interval,"", sep = "")),2],0),
+                                .)))
+
+```
+A new dataset **act_NAfilled** is created from the raw data with same number of rows **`r nrow(act_NAfilled)`**.  
+The below comparison shows the filled in value 
+
+Before Imputing...  
+```{r}
+      head(act_raw, 3)
+```
+
+After Imputing ...  
+```{r}
+
+    head(act_NAfilled,3)
+```
+
+Let's calculate the total number of steps, mean and median as before again with new dataset
+
+```{r calcTotalStps_after}
+    # create subset of the dataset containing only steps and date
+    act_NAfilled_subst <- act_NAfilled %>% select(steps, date) %>%
+                          group_by(date)
+
+    # Calculate the total number of steps by date
+    daywise_rpt_aft <- act_NAfilled_subst %>% summarise_each(funs(total_stps = sum))
+
+    # Plot an histogram for the aboe
+    ggplot(daywise_rpt_aft, aes(daywise_rpt_aft$total_stps)) + geom_histogram() +
+        xlab("Total Steps taken each day") + ylab("Count") +
+            ggtitle("Total steps taken each day after NA values are imputed") 
+```
+
+The above histogram shows different count pattern to that of the earlier histogram.
+
+We also calculate and report the mean and median values
+
+```{r calcMnMed}
+    # Calculate the mean and median for new dataset  
+    daywise_rpt_aft <- join(daywise_rpt_aft, 
+                          act_NAfilled_subst %>% summarise_each(funs(mean_stps = mean)), 
+                              by = c("date"))
+    daywise_rpt_aft <- join(daywise_rpt_aft, 
+                          act_NAfilled_subst %>% summarise_each(funs(median_stps = median)), 
+                              by = c("date"))
+
+    
+```
+
+The mean and median values for each day for new updated dataset is as below
+
+```{r}
+     daywise_rpt_aft 
+```
+
+We can easily observe that 8 days of missing data has been added onto to the new dataset. Also the count is recorded higher in the histogram after imputing data.  
+
+The  median value for steps were zero before imputing, now median values exist for few date patterns
+
+## Are there differences in activity patterns between weekdays and weekends?
+Now that we have added the missing values, we can do further analysis by categorising the daily activty into weekday and week end
+
+To do that, we a add new column to he imputed dataset called "whichday". This column will contain whether the given date is a weekday or weekend
+
+```{r calcWhichDay}
+
+    # using weekdays() and date column, determine if it is weekday or weekend
+    # use mutate function to add the col to the dataset
+    act_NAfilled <- act_NAfilled %>% 
+                    mutate_at(c("date"), 
+                        funs(whichday = ifelse(weekdays(.) %in% 
+                            c("Saturday", "Sunday"), "weekend", "weekday")) )
+
+```
+
+Now if we look at the top 3 rows, we will see
+
+```{r}
+    head(act_NAfilled, 3)
+```
+
+We can now compare the daily activity pattern across weekday and weekend and plot it as timeseries plot
+
+```{r compareWkdayWkend}
+      # calculate the mean by interval and whichday
+      avgsteps_byday_int <- act_NAfilled %>% select(steps,interval, whichday) %>%
+          group_by(interval, whichday) %>% summarise_each(funs(mean))
+
+    # generate a time series plot for both weekday and weekend for comparison
+    ggplot(avgsteps_byday_int, aes(x = interval, y = steps)) + geom_line(col = "blue") +
+        facet_grid(whichday ~.) + xlab("Interval") + ylab("Average steps taken") +
+            ggtitle("Daily pattern across weekday and weekend")
+
+```
+
+The above panel plot shows weekend experience more activity across various interval whereas in a weekday only a few intervals are busy
+
+This completes first level of analysis of the activity monitoring data
