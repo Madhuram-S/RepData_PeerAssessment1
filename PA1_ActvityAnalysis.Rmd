@@ -78,21 +78,15 @@ Here we calculate and report
 
 We also calculate the mean and median for steps taken for each day
 ``` {r calcMeanMedian}
-      # Calculate mean and median for each day and store in summary dataset
-      daywise_rpt_bf <- join(daywise_rpt_bf, 
-                             activity_bydt %>% summarise_each(funs(mean_stps = mean)), 
-                                by = c("date"))
-      daywise_rpt_bf <- join(daywise_rpt_bf, 
-                             activity_bydt %>% summarise_each(funs(median_stps = median)), 
-                                by = c("date"))
+      # Calculate mean and median for total steps each day
+      mean_stps <- round(mean(daywise_rpt_bf$total_stps),2)
+      median_stps <- round(median(daywise_rpt_bf$total_stps),2)
       
       
 ```
 
-The mean and median values for each day is as below  
-```{r}
-    daywise_rpt_bf 
-```
+The mean value is `r mean_stps` and median values is `r median_stps`
+
 ## What is the average daily activity pattern?
 To understand the daily activity pattern, we calculate the average of number of steps taken across all days for each of the 5-minute interval values
 
