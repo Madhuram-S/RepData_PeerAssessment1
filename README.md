@@ -53,7 +53,7 @@ Show any code that is needed to
 2. Process/transform the data (if necessary) into a format suitable for your analysis
 
 
-# Main idea is understand answer to the below questions (Please refer )
+# Main idea is to answer to the below questions
 
 
 ### What is mean total number of steps taken per day?
